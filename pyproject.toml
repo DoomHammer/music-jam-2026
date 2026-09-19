@@ -1,0 +1,10 @@
+[project]
+name = "music-jam-2026"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fasta>=2.3.6",
+    "matplotlib>=3.11.2",
+]

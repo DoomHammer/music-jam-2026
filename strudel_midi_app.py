@@ -4,8 +4,6 @@ import customtkinter as ctk
 import rtmidi2
 
 
-STEPS = 16
-TRACKS = ["MIDI 1", "MIDI 2", "MIDI 3", "MIDI 4", "MIDI 5", "MIDI 6"]
 BG = "#070b12"
 PANEL = "#111827"
 CONTROL = "#1f2b3f"
@@ -15,105 +13,114 @@ TEXT = "#eaf2ff"
 MUTED = "#94a3b8"
 ACCENT = "#f4ad22"
 GREEN = "#2f9654"
-
-NOTES = {"c": 0, "c#": 1, "db": 1, "d": 2, "d#": 3, "eb": 3, "e": 4, "f": 5, "f#": 6, "gb": 6, "g": 7, "g#": 8, "ab": 8, "a": 9, "a#": 10, "bb": 10, "b": 11}
+CODONS_PER_LINE = 18
+DNA = """TACTCTTTATTTAATATTTGGAGCTTGAGCTGGTATGATTGGAACCGCTATGAGAGTTATAATTCGTACT
+GAGCTTGCACAACCAGGGTCTTTACTTCAAGACGATCAAATTTATAAAGTTATAGTAACTGCTCATGCCC
+TCGTAATGATATTTTTTATGGTAATGCCTATTATGATAGGAGGATTTGGTAAATGACTAATCCCTCTCAT
+GATAGGAGCCCCAGACATGGCATTCCCCCGCATGAAAAAAATGAGGTTTTGACTAATCCCCCCTTCTTTT
+TTACTTCTCCTAGCTTCCGCTGGGGTTGAAAGAGGGGCAGGGACTGGGTGAACAATTTACCCCCCTTTAT
+CTAGAGGGCTAGCTCACGCAGGAGGATCTGTTGATCTTGCTATCTTTTCCCTACACTTGGCTGGAGCTTC
+TTCTATTTTAGCCTCCATAAAATTTATTACAACAATTATAAAAATGCGAACGCCTGGAATGTCTTTTGAT
+CGACTTCCTCTTTTCGTTTGATCAGTGTTTGTAACTGCTTTTCTCCTCCTACTTTCTCTCCCCGTTTTAG
+CCGGAGCTATTACTATGCTCTTGACAGATCGAAAAATTAATACAACTTTTTTCGACCCCGCTGGAGGAGG
+AGACCCTATACTTTTTCAACATTTATTC"""
+PITCHES = {"AA": 48, "AC": 50, "AG": 52, "AT": 55, "CA": 57, "CC": 60, "CG": 62, "CT": 64, "GA": 67, "GC": 69, "GG": 72, "GT": 74, "TA": 76, "TC": 79, "TG": 81, "TT": None}
+DURATIONS = {"T": 0.25, "C": 0.5, "G": 1.0, "A": 2.0}
 
 
 ctk.set_appearance_mode("dark")
 app = ctk.CTk(fg_color=BG)
 app.title("MusicJam Strudel MIDI")
-app.geometry("1180x720")
+app.geometry("940x560")
 app.grid_columnconfigure(0, weight=1)
-app.grid_rowconfigure(0, weight=1)
+app.grid_rowconfigure(1, weight=1)
 
-state = {}
+ui = {}
 playing = False
 midi = None
-ui = {}
 pattern = []
 step_i = 0
 current_note = None
-channel = 0
-velocity = 100
-gate_ms = 300
-step_ms = 375
 
 
-def field(parent, key, label, value):
-    ctk.CTkLabel(parent, text=label, text_color=MUTED, anchor="w").pack(fill="x", pady=(12, 3))
-    item = ctk.CTkEntry(parent, fg_color=FIELD, border_color=LINE, text_color=TEXT)
-    item.pack(fill="x")
+def entry(parent, key, label, value, width=80):
+    box = ctk.CTkFrame(parent, fg_color=BG)
+    box.pack(side="left", padx=7)
+    ctk.CTkLabel(box, text=label, text_color=MUTED).pack(side="left", padx=(0, 5))
+    item = ctk.CTkEntry(box, width=width, fg_color=FIELD, border_color=LINE, text_color=TEXT)
+    item.pack(side="left")
     item.insert(0, value)
     ui[key] = item
 
 
-def toggle(track, step, button):
-    key = (track, step)
-    state[key] = not state.get(key, False)
-    button.configure(fg_color=ACCENT if state[key] else FIELD)
-
-
 def status(text):
-    app.after(0, lambda: status_label.configure(text=f"Status: {text}"))
+    status_label.configure(text=f"Status: {text}")
 
 
-def midi_note(token, octave):
-    match = re.fullmatch(r"([a-gA-G][#b]?)(-?\d*)", token)
-    if not match:
-        return None
-    name, oct_text = match.groups()
-    oct_num = int(oct_text) if oct_text else octave
-    return 12 * (oct_num + 1) + NOTES[name.lower()]
+def dna_codons(text):
+    clean = re.sub(r"[^ACGT]", "", text.upper())
+    return [clean[i:i + 3] for i in range(0, len(clean) - 2, 3)]
 
 
-def strudel_notes(text):
-    match = re.search(r"""note\(\s*["']([^"']+)["']\s*\)""", text)
-    if not match:
-        return []
-    octave = int(ui["octave"].get() or 4)
-    return [midi_note(token, octave) for token in re.split(r"[\s,]+", match.group(1)) if token and token != "~"]
+def format_codons(codons):
+    return "\n".join(" ".join(codons[i:i + CODONS_PER_LINE]) for i in range(0, len(codons), CODONS_PER_LINE))
 
 
-def open_midi():
-    out = rtmidi2.MidiOut()
-    port = ui["port"].get().strip()
-    out.open_port(int(port) if port.isdigit() else rtmidi2.get_out_ports().index(port))
-    return out
+def dna_events(codons):
+    return [(PITCHES[codon[:2]], DURATIONS[codon[2]]) for codon in codons]
+
+
+def codon_pos(index):
+    return f"{index // CODONS_PER_LINE + 1}.{index % CODONS_PER_LINE * 4}"
+
+
+def clear_highlight():
+    code._textbox.tag_remove("active_codon", "1.0", "end")
+
+
+def highlight_codon(index):
+    clear_highlight()
+    start = codon_pos(index)
+    code._textbox.tag_add("active_codon", start, f"{start}+3c")
+    code.see(start)
 
 
 def note_off(note):
     if midi:
-        midi.send_noteoff(channel, note)
+        midi.send_noteoff(0, note)
 
 
 def play_step():
     global step_i, current_note
     if not playing:
         return
-    current_note = pattern[step_i % len(pattern)]
+    index = step_i % len(pattern)
+    highlight_codon(index)
+    current_note, duration = pattern[index]
     step_i += 1
-    midi.send_noteon(channel, current_note, velocity)
-    app.after(gate_ms, lambda note=current_note: note_off(note))
+    step_ms = int((60000 / int(ui["bpm"].get() or 120)) * duration)
+    if current_note is not None:
+        midi.send_noteon(0, current_note, 100)
+        app.after(int(step_ms * float(ui["gate"].get() or 0.8)), lambda note=current_note: note_off(note))
     app.after(step_ms, play_step)
 
 
 def play():
-    global midi, playing, pattern, step_i, channel, velocity, gate_ms, step_ms
+    global midi, playing, pattern, step_i
     if playing:
         return
     try:
-        pattern = [note for note in strudel_notes(code.get("1.0", "end")) if note is not None]
+        codons = dna_codons(code.get("1.0", "end"))
+        pattern = dna_events(codons)
         if not pattern:
-            return status("no note(...)")
-        midi = open_midi()
-        bpm = int(ui["bpm"].get() or 120)
-        channel = int(ui["channel"].get() or 1) - 1
-        velocity = int(ui["velocity"].get() or 100)
-        step_ms = int(60000 / bpm)
-        gate_ms = int(step_ms * float(ui["gate"].get() or 0.8))
+            return status("no DNA codons")
+        code.delete("1.0", "end")
+        code.insert("1.0", format_codons(codons))
+        midi = rtmidi2.MidiOut()
+        midi.open_port(1)
         step_i = 0
         playing = True
-        status(f"playing {len(pattern)} notes")
+        status(f"playing {len(pattern)} codons")
         play_step()
     except Exception as err:
         playing = False
@@ -121,83 +128,39 @@ def play():
 
 
 def stop():
-    global playing
+    global midi, playing
     playing = False
+    clear_highlight()
     if midi and current_note is not None:
-        midi.send_noteoff(channel, current_note)
+        midi.send_noteoff(0, current_note)
+    if midi:
+        midi.close_port()
+        midi = None
     status("stopped")
 
 
-sidebar = ctk.CTkFrame(app, fg_color=PANEL, corner_radius=0, width=270)
-sidebar.grid(row=0, column=1, sticky="nsew")
-sidebar.grid_propagate(False)
+top = ctk.CTkFrame(app, fg_color=BG)
+top.grid(row=0, column=0, sticky="ew", padx=22, pady=18)
 
-ctk.CTkLabel(sidebar, text="MusicJam", text_color=ACCENT, font=("Segoe UI", 30, "bold")).pack(anchor="w", padx=22, pady=(34, 28))
-field(sidebar, "mode", "Mode", "Strudel MIDI")
-field(sidebar, "port", "MIDI Output", "1")
-field(sidebar, "channel", "Channel", "1")
-field(sidebar, "velocity", "Velocity", "100")
-field(sidebar, "gate", "Gate", "0.8")
-field(sidebar, "octave", "Octave", "4")
+ctk.CTkLabel(top, text="MusicJam DNA MIDI", text_color=ACCENT, font=("Segoe UI", 26, "bold")).pack(side="left", padx=(0, 24))
+ctk.CTkButton(top, text="Play", width=86, fg_color=GREEN, hover_color="#2a874c", command=play).pack(side="left", padx=5)
+ctk.CTkButton(top, text="Stop", width=86, fg_color=CONTROL, hover_color="#273956", command=stop).pack(side="left", padx=5)
+entry(top, "bpm", "BPM", "128")
+entry(top, "gate", "Gate", "0.8")
 
-main = ctk.CTkFrame(app, fg_color=BG, corner_radius=0)
-main.grid(row=0, column=0, sticky="nsew", padx=22, pady=18)
-main.grid_columnconfigure(0, weight=1)
-main.grid_rowconfigure(1, weight=1)
+panel = ctk.CTkFrame(app, fg_color=PANEL, border_color=LINE, border_width=1, corner_radius=8)
+panel.grid(row=1, column=0, sticky="nsew", padx=22, pady=(0, 18))
 
-top = ctk.CTkFrame(main, fg_color=BG)
-top.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-top.grid_columnconfigure(8, weight=1)
+ctk.CTkLabel(panel, text="DNA", text_color=TEXT, font=("Segoe UI", 20, "bold")).pack(anchor="w", padx=16, pady=(16, 8))
+code = ctk.CTkTextbox(panel, fg_color=FIELD, border_color=LINE, border_width=1, text_color=TEXT, font=("Consolas", 16))
+code.pack(fill="both", expand=True, padx=16)
+code._textbox.tag_configure("active_codon", background=ACCENT, foreground="#111827")
+code.insert("1.0", format_codons(dna_codons(DNA)))
 
-ctk.CTkLabel(top, text="Sequencer", text_color=TEXT, font=("Segoe UI", 24, "bold")).grid(row=0, column=0, padx=(0, 26))
-ctk.CTkButton(top, text="Play", width=86, fg_color=GREEN, hover_color="#2a874c", command=play).grid(row=0, column=1, padx=5)
-ctk.CTkButton(top, text="Stop", width=86, fg_color=CONTROL, hover_color="#273956", command=stop).grid(row=0, column=2, padx=5)
-ctk.CTkButton(top, text="Rec", width=74, fg_color="#70333d", hover_color="#87414d").grid(row=0, column=3, padx=5)
-
-for col, (key, label, value) in enumerate([("bpm", "BPM", "128"), ("swing", "Swing", "0"), ("steps", "Steps", "16"), ("key", "Key", "C minor")], start=4):
-    box = ctk.CTkFrame(top, fg_color=BG)
-    box.grid(row=0, column=col, padx=7)
-    ctk.CTkLabel(box, text=label, text_color=MUTED).pack(side="left", padx=(0, 5))
-    entry = ctk.CTkEntry(box, width=70, fg_color=FIELD, border_color=LINE, text_color=TEXT)
-    entry.pack(side="left")
-    entry.insert(0, value)
-    ui[key] = entry
-
-ctk.CTkButton(top, text="Save", width=80, fg_color=CONTROL, hover_color="#273956", text_color=ACCENT).grid(row=0, column=9, sticky="e")
-
-work = ctk.CTkFrame(main, fg_color=PANEL, border_color=LINE, border_width=1, corner_radius=8)
-work.grid(row=1, column=0, sticky="nsew")
-work.grid_columnconfigure(0, weight=1)
-work.grid_rowconfigure(0, weight=1)
-work.grid_rowconfigure(1, weight=1)
-
-grid = ctk.CTkFrame(work, fg_color=PANEL)
-grid.grid(row=0, column=0, sticky="nsew", padx=18, pady=(18, 8))
-
-for step in range(STEPS):
-    ctk.CTkLabel(grid, text=f"{step + 1:02}", width=38, text_color=MUTED).grid(row=0, column=step + 4, padx=3)
-
-for row, track in enumerate(TRACKS, start=1):
-    ctk.CTkLabel(grid, text=track, width=76, text_color=TEXT, anchor="w").grid(row=row, column=0, sticky="w", pady=5)
-    ctk.CTkCheckBox(grid, text="M", width=34, fg_color=ACCENT, border_color=LINE).grid(row=row, column=1)
-    ctk.CTkCheckBox(grid, text="S", width=34, fg_color=ACCENT, border_color=LINE).grid(row=row, column=2)
-    ctk.CTkEntry(grid, width=56, fg_color=FIELD, border_color=LINE, text_color=TEXT).grid(row=row, column=3, padx=(0, 8))
-    grid.grid_slaves(row=row, column=3)[0].insert(0, "ch1")
-
-    for step in range(STEPS):
-        button = ctk.CTkButton(grid, text="", width=38, height=30, corner_radius=5, fg_color=FIELD, hover_color="#283754")
-        button.configure(command=lambda t=track, s=step, b=button: toggle(t, s, b))
-        button.grid(row=row, column=step + 4, padx=3, pady=5)
-
-strudel = ctk.CTkFrame(work, fg_color=BG, border_color=LINE, border_width=1, corner_radius=8)
-strudel.grid(row=1, column=0, sticky="nsew", padx=18, pady=(8, 18))
-
-ctk.CTkLabel(strudel, text="Strudel", text_color=TEXT, font=("Segoe UI", 20, "bold")).pack(anchor="w", padx=14, pady=(14, 8))
-code = ctk.CTkTextbox(strudel, height=130, fg_color=FIELD, border_color=LINE, border_width=1, text_color=TEXT, font=("Consolas", 15))
-code.pack(fill="both", expand=True, padx=14)
-code.insert("1.0", 'note("c eb g bb").midi()')
-ctk.CTkButton(strudel, text="Eval", fg_color=ACCENT, hover_color="#d99920", text_color="#111827", command=play).pack(fill="x", padx=14, pady=12)
-status_label = ctk.CTkLabel(strudel, text="Status: ready", text_color=MUTED)
-status_label.pack(anchor="w", padx=14, pady=(0, 14))
+bottom = ctk.CTkFrame(panel, fg_color=PANEL)
+bottom.pack(fill="x", padx=16, pady=14)
+ctk.CTkButton(bottom, text="Parse / Play", fg_color=ACCENT, hover_color="#d99920", text_color="#111827", command=play).pack(side="left")
+status_label = ctk.CTkLabel(bottom, text="Status: ready", text_color=MUTED)
+status_label.pack(side="left", padx=14)
 
 app.mainloop()

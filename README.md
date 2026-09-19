@@ -1,0 +1,18 @@
+## Dramatis Personae
+
+- <https://oceaninfo.com/animals/clownfish/> (Amphiprion ocellaris)
+- <https://oceaninfo.com/animals/giant-squid/> (Architeuthis dux)
+- <https://en.wikipedia.org/wiki/Common_starfish> (Asterias rubens)
+- <https://oceaninfo.com/animals/blue-whale/> (Balaenoptera musculus)
+- <https://oceaninfo.com/animals/herring/> (Clupea harengus)
+- <https://oceaninfo.com/animals/comb-jelly/> (Ctenophora)
+- <https://oceaninfo.com/animals/bioluminescent-plankton/> (Dinoflagellates)
+- <https://oceaninfo.com/animals/dugong/> (Dugong dugon)
+- <https://oceaninfo.com/animals/cod-fish/> (Gadus)
+- <https://oceaninfo.com/animals/sea-horse/> (Hippocampus histrix)
+- <https://oceaninfo.com/animals/american-lobster/> (Homarus americanus)
+- <https://oceaninfo.com/animals/atlantic-blue-marlin/> (Makaira nigricans)
+- <https://oceaninfo.com/animals/earless-seal/> (Phocidae)
+- <https://oceaninfo.com/animals/fugu-pufferfish/> (Takifugu)
+- <https://oceaninfo.com/animals/polar-bear/> (Ursus maritimus)
+- <https://oceaninfo.com/animals/vampire-squid/> (Vampyroteuthis infernalis)

@@ -339,6 +339,7 @@ class ArrangerDaw:
         solo_var = tk.IntVar(value=track.get("solo", 0))
         tk.Checkbutton(left, text="M", variable=mute_var, bg=PANEL, fg=TEXT, selectcolor=FIELD, activebackground=PANEL, activeforeground=TEXT, command=self.repaint_arranger).grid(row=0, column=4, sticky="w", padx=1, pady=1)
         tk.Checkbutton(left, text="S", variable=solo_var, bg=PANEL, fg=TEXT, selectcolor=FIELD, activebackground=PANEL, activeforeground=TEXT, command=self.repaint_arranger).grid(row=0, column=5, sticky="w", padx=1, pady=1)
+        self.button(left, "X", RED, lambda t=track: self.delete_track(t), width=2).grid(row=0, column=6, sticky="w", padx=(3, 5), pady=3)
         track.update({"port_var": port_var, "port_menu": port_menu, "velocity_var": velocity_var, "mute_var": mute_var, "solo_var": solo_var})
 
         timeline = tk.Frame(self.inner, bg=BG)
@@ -379,6 +380,14 @@ class ArrangerDaw:
     def repaint_arranger(self):
         for track in self.tracks:
             self.render_track_timeline(track)
+
+    def delete_track(self, track):
+        self.sync_track_controls()
+        if self.editor and self.editor.track is track:
+            self.editor.close()
+        self.tracks.remove(track)
+        self.build_arranger()
+        self.status(f"removed {track['name']}")
 
     def add_clip(self, track, bar):
         bars = clamp(int(self.clip_bars_var.get()), 1, 4)
@@ -772,15 +781,11 @@ class ArrangerDaw:
             data = json.loads(PROJECT_FILE.read_text(encoding="utf-8"))
             self.bpm_var.set(data.get("bpm", 128))
             self.start_bar_var.set(clamp(int(data.get("start_bar", 1)), 1, SONG_BARS))
-            by_id = {track["id"]: track for track in data.get("tracks", [])}
-            for track in self.tracks:
-                if track["id"] in by_id:
-                    self.apply_track_data(track, by_id[track["id"]])
-            default_ids = {track["id"] for track in self.tracks}
+            default_tracks = {track["id"]: track for track in self.tracks}
+            self.tracks = []
             for saved_track in data.get("tracks", []):
-                if saved_track.get("id") in default_ids:
-                    continue
-                track = {key: saved_track[key] for key in ("id", "name", "kind", "channel", "gate") if key in saved_track}
+                track = dict(default_tracks.get(saved_track.get("id"), {}))
+                track.update({key: saved_track[key] for key in ("id", "name", "kind", "channel", "gate") if key in saved_track})
                 track["clips"] = []
                 self.apply_track_data(track, saved_track)
                 self.tracks.append(track)

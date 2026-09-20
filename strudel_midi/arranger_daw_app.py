@@ -148,7 +148,7 @@ class ArrangerDaw:
         self.app = tk.Tk()
         self.app.configure(bg=BG)
         self.app.report_callback_exception = self.report_callback_exception
-        self.app.title("Synthwave Arranger MIDI DAW")
+        self.app.title("submarine DNA synthwave arranger")
         self.app.geometry("1320x720")
         self.bpm_var = tk.IntVar(value=128)
         self.start_bar_var = tk.IntVar(value=1)
@@ -171,7 +171,7 @@ class ArrangerDaw:
     def build_ui(self):
         top = tk.Frame(self.app, bg=BG)
         top.pack(fill="x", padx=10, pady=8)
-        tk.Label(top, text="Synthwave Arranger", bg=BG, fg=ACCENT, font=("Segoe UI", 16, "bold")).pack(side="left", padx=(0, 10))
+        tk.Label(top, text="submarine DNA synthwave arranger", bg=BG, fg=ACCENT, font=("Segoe UI", 16, "bold")).pack(side="left", padx=(0, 10))
         self.button(top, "Play", GREEN, self.play).pack(side="left", padx=4)
         self.button(top, "Stop", "#1f2b3f", self.stop).pack(side="left", padx=4)
         tk.Label(top, text="BPM", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))

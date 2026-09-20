@@ -96,9 +96,11 @@ class DnaVoiceRow:
     def __init__(self, daw, name, dna, default_port, data=None):
         self.daw = daw
         self.name = name
+        self.key = "Voice A" if name == "Voice 1" else "Voice B"
         self.codons = dna_codons(dna)
         self.pattern = dna_events(self.codons)
         self.step = 0
+        self.wait_steps = 0
         self.start_step = 0
         self.loop_start = None
         self.loop_end = None
@@ -121,7 +123,7 @@ class DnaVoiceRow:
         self.build_grid()
 
     def build_left(self):
-        tk.Button(self.left, textvariable=self.name_var, bg=PANEL, fg=ACCENT, activebackground=LINE, activeforeground=TEXT, relief="flat", width=10, anchor="w", command=self.daw.open_dna_editor).grid(row=0, column=0, sticky="ew", padx=(5, 3), pady=3)
+        tk.Button(self.left, textvariable=self.name_var, bg=PANEL, fg=ACCENT, activebackground=LINE, activeforeground=TEXT, relief="flat", width=10, anchor="w", command=lambda: self.daw.open_dna_editor(self.key)).grid(row=0, column=0, sticky="ew", padx=(5, 3), pady=3)
         self.port_menu = tk.OptionMenu(self.left, self.port_var, *(self.daw.port_choices or ["no MIDI ports"]))
         self.port_menu.configure(bg=FIELD, fg=TEXT, activebackground=LINE, activeforeground=TEXT, highlightthickness=0, width=15)
         self.port_menu["menu"].configure(bg=FIELD, fg=TEXT)
@@ -168,6 +170,7 @@ class DnaVoiceRow:
             self.loop_start = None
             self.loop_end = None
         self.step = self.start_step
+        self.wait_steps = 0
         self.build_grid()
 
     def grid(self, row):
@@ -290,12 +293,14 @@ class DnaVoiceRow:
 
 
 class DnaEditorWindow:
-    def __init__(self, daw):
+    def __init__(self, daw, key):
         self.daw = daw
+        self.key = key
+        self.title = "Voice 1" if key == "Voice A" else "Voice 2"
         self.window = tk.Toplevel(daw.app)
         self.window.configure(bg=BG)
-        self.window.title("DNA Voices")
-        self.window.geometry("1120x640")
+        self.window.title(f"DNA {self.title}")
+        self.window.geometry("760x640")
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.panels = {}
         self.build_ui()
@@ -304,7 +309,7 @@ class DnaEditorWindow:
     def build_ui(self):
         top = tk.Frame(self.window, bg=BG)
         top.pack(fill="x", padx=16, pady=12)
-        tk.Label(top, text="DNA Voices", bg=BG, fg=ACCENT, font=("Segoe UI", 20, "bold")).pack(side="left", padx=(0, 14))
+        tk.Label(top, text=f"DNA {self.title}", bg=BG, fg=ACCENT, font=("Segoe UI", 20, "bold")).pack(side="left", padx=(0, 14))
         self.button(top, "Apply", ACCENT, self.apply, fg="#111827").pack(side="left", padx=4)
         self.button(top, "Save DNA", GREEN, self.save, width=10).pack(side="left", padx=4)
         self.button(top, "Reload File", "#1f2b3f", self.load_from_file, width=10).pack(side="left", padx=4)
@@ -312,10 +317,8 @@ class DnaEditorWindow:
         body = tk.Frame(self.window, bg=BG)
         body.pack(fill="both", expand=True, padx=12, pady=(0, 12))
         body.grid_columnconfigure(0, weight=1)
-        body.grid_columnconfigure(1, weight=1)
         body.grid_rowconfigure(0, weight=1)
-        self.voice_panel(body, "Voice 1", "Voice A", 0)
-        self.voice_panel(body, "Voice 2", "Voice B", 1)
+        self.voice_panel(body, self.title, self.key, 0)
 
     def button(self, parent, text, bg, command, fg=TEXT, width=8):
         return tk.Button(parent, text=text, width=width, bg=bg, fg=fg, activebackground=LINE, activeforeground=TEXT, relief="flat", command=command)
@@ -343,15 +346,15 @@ class DnaEditorWindow:
         self.panels[key] = {"title": title, "codons": [], "text": text, "editing": False, "edit_button": edit_button}
 
     def load_from_app(self):
+        index = 0 if self.key == "Voice A" else 1
         codes = {
-            "Voice A": "".join(self.daw.dna_voices[0].codons) if len(self.daw.dna_voices) > 0 else "",
-            "Voice B": "".join(self.daw.dna_voices[1].codons) if len(self.daw.dna_voices) > 1 else "",
+            self.key: "".join(self.daw.dna_voices[index].codons) if len(self.daw.dna_voices) > index else "",
         }
         self.set_codes(codes)
         self.daw.status("DNA loaded from app")
 
     def load_from_file(self):
-        self.set_codes(load_dna_codes())
+        self.set_codes({self.key: load_dna_codes().get(self.key, "")})
         self.daw.status(f"DNA loaded from {DNA_FILE.name}")
 
     def voice_for(self, key):
@@ -454,7 +457,9 @@ class DnaEditorWindow:
 
     def save(self):
         codes = self.codes()
-        DNA_FILE.write_text(json.dumps(codes, indent=2), encoding="utf-8")
+        all_codes = load_dna_codes()
+        all_codes.update(codes)
+        DNA_FILE.write_text(json.dumps(all_codes, indent=2), encoding="utf-8")
         self.daw.apply_dna_codes(codes)
         for key, panel in self.panels.items():
             panel["codons"] = dna_codons(panel["text"].get("1.0", "end"))
@@ -505,7 +510,7 @@ class SynthwaveDnaDaw:
         tk.Spinbox(top, from_=1, to=MAX_BARS, textvariable=self.bars_var, width=3, bg=FIELD, fg=TEXT, buttonbackground=LINE, relief="flat").pack(side="left")
         tk.OptionMenu(top, self.add_kind_var, *TRACK_TYPES).pack(side="left", padx=(10, 4))
         self.button(top, "Add", ACCENT, self.add_selected_track, fg="#111827", width=5).pack(side="left", padx=3)
-        self.button(top, "DNA", "#1f2b3f", self.open_dna_editor, width=5).pack(side="left", padx=3)
+        self.button(top, "DNA", "#1f2b3f", lambda: self.open_dna_editor("Voice A"), width=5).pack(side="left", padx=3)
         self.button(top, "Save", ACCENT, self.save, fg="#111827", width=5).pack(side="left", padx=(10, 3))
         self.button(top, "Load", "#1f2b3f", self.load).pack(side="left", padx=4)
         self.button(top, "Ports", "#1f2b3f", self.refresh_ports, width=6).pack(side="left", padx=3)
@@ -593,18 +598,20 @@ class SynthwaveDnaDaw:
         self.layout_rows()
         return voice
 
-    def open_dna_editor(self):
+    def open_dna_editor(self, key="Voice A"):
         if self.dna_editor and self.dna_editor.window.winfo_exists():
-            self.dna_editor.window.lift()
-            return
-        self.dna_editor = DnaEditorWindow(self)
+            if self.dna_editor.key == key:
+                self.dna_editor.window.lift()
+                return
+            self.dna_editor.close()
+        self.dna_editor = DnaEditorWindow(self, key)
 
     def apply_dna_codes(self, codes):
         if self.playing:
             self.stop()
-        if len(self.dna_voices) >= 1:
+        if "Voice A" in codes and len(self.dna_voices) >= 1:
             self.dna_voices[0].set_dna(codes.get("Voice A", ""))
-        if len(self.dna_voices) >= 2:
+        if "Voice B" in codes and len(self.dna_voices) >= 2:
             self.dna_voices[1].set_dna(codes.get("Voice B", ""))
         self.layout_rows()
         self.repaint_all()
@@ -715,14 +722,15 @@ class SynthwaveDnaDaw:
             output.open_port(port)
             self.outputs[port] = output
 
-    def send_notes(self, track, notes, duration_steps=1):
+    def send_notes(self, track, notes, duration_steps=1, gate=None):
         port = track.selected_port()
         output = self.outputs.get(port)
         if not output:
             return
         channel = track.channel()
         velocity = track.velocity()
-        duration_ms = max(20, int(self.step_ms() * duration_steps * track.gate()))
+        gate = track.gate() if gate is None else gate
+        duration_ms = max(20, int(self.step_ms() * duration_steps * gate))
         for note in notes:
             self.send_note(port, channel, note, velocity, duration_ms)
 
@@ -747,7 +755,7 @@ class SynthwaveDnaDaw:
             return
         value = track.cells[step]
         if track.kind == "Bass" and value:
-            self.send_notes(track, [note_number(value, 2)])
+            self.send_notes(track, [note_number(value, 2)], track.next_filled_step(step, total_steps) - step, gate=1.0)
         elif track.kind == "Pad" and value:
             self.send_notes(track, chord_notes(value, 4), track.next_filled_step(step, total_steps) - step)
         elif track.kind == "Arp":
@@ -762,7 +770,7 @@ class SynthwaveDnaDaw:
             fx_notes = {"NOISE": 84, "RISER": 85, "CYM": 49, "CHOP": 86}
             self.send_notes(track, [fx_notes[value]])
 
-    def play_grid_step(self):
+    def play_step(self):
         if not self.playing:
             return
         total_steps = self.total_steps()
@@ -771,10 +779,15 @@ class SynthwaveDnaDaw:
         self.repaint_playhead(previous, self.play_step_index)
         for track in self.tracks:
             self.play_track_step(track, self.play_step_index, total_steps)
-        self.after_ids.append(self.app.after(self.step_ms(), self.play_grid_step))
+        for voice in self.dna_voices:
+            self.play_dna_tick(voice)
+        self.after_ids.append(self.app.after(self.step_ms(), self.play_step))
 
-    def play_dna_voice(self, voice):
+    def play_dna_tick(self, voice):
         if not self.playing or not voice.pattern:
+            return
+        if voice.wait_steps > 0:
+            voice.wait_steps -= 1
             return
         loop_on = voice.loop_start is not None and voice.loop_end is not None
         if loop_on and (voice.step < voice.loop_start or voice.step > voice.loop_end):
@@ -785,12 +798,13 @@ class SynthwaveDnaDaw:
         if loop_on and voice.step > voice.loop_end:
             voice.step = voice.loop_start
         voice.highlight(index)
-        duration_ms = int((60000 / clamp(int(self.bpm_var.get()), 40, 220)) * duration)
+        duration_steps = max(1, int(round(duration * 4)))
+        voice.wait_steps = duration_steps - 1
+        duration_ms = self.step_ms() * duration_steps
         if note is not None and voice.enabled():
             port = voice.selected_port()
             note += voice.octave() * 12
             self.send_note(port, 0, note, voice.velocity(), max(20, int(duration_ms * DNA_GATE)))
-        self.after_ids.append(self.app.after(duration_ms, lambda v=voice: self.play_dna_voice(v)))
 
     def play(self):
         if self.playing:
@@ -804,10 +818,9 @@ class SynthwaveDnaDaw:
             self.play_step_index = -1
             for voice in self.dna_voices:
                 voice.step = voice.start_step
-            self.play_grid_step()
-            for voice in self.dna_voices:
-                self.play_dna_voice(voice)
-            self.status("playing grid + DNA")
+                voice.wait_steps = 0
+            self.play_step()
+            self.status("playing grid + DNA on one clock")
         except Exception as err:
             self.stop()
             self.report_exception("play failed")
@@ -829,6 +842,7 @@ class SynthwaveDnaDaw:
         self.repaint_playhead(previous, -1)
         for voice in self.dna_voices:
             voice.active_step = None
+            voice.wait_steps = 0
             voice.repaint()
         if self.dna_editor:
             self.dna_editor.repaint_blocks()

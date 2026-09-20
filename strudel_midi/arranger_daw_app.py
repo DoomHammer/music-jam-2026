@@ -531,6 +531,25 @@ class ArrangerDaw:
         if not events:
             return
         total_steps = clip["bars"] * STEPS_PER_BAR
+        if track["id"] == "voice1" and clip.get("dna_factor", "1") != "1":
+            factor = float(clip.get("dna_factor", "1"))
+            events = events[:max(1, int(total_steps * factor))]
+            for index, (note, _duration) in enumerate(events):
+                start = index * total_steps // len(events)
+                if start != local_step:
+                    continue
+                end = (index + 1) * total_steps // len(events)
+                clip["active_codon"] = index
+                if note is not None:
+                    port = self.selected_port(track)
+                    self.send_note(port, 0, note, clamp(int(track["velocity_var"].get()), 1, 127), max(20, int(self.step_ms() * max(1, end - start) * DNA_GATE + DNA_DELAY_MS)))
+                if self.editor and self.editor.clip is clip:
+                    self.editor.repaint_playhead(local_step)
+                return
+            clip["active_codon"] = None
+            if self.editor and self.editor.clip is clip:
+                self.editor.repaint_playhead(local_step)
+            return
         duration_steps_by_event = [max(1, int(round(duration * 4))) for _note, duration in events]
         if sum(duration_steps_by_event) > total_steps:
             index = local_step % len(events)
@@ -724,6 +743,7 @@ class ClipEditor:
         self.window.geometry("920x360")
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.bar_var = tk.StringVar(value=str(clip["bars"]))
+        self.dna_factor_var = tk.StringVar(value=str(clip.get("dna_factor", "1")))
         self.buttons = []
         self.text = None
         self.build()
@@ -734,6 +754,9 @@ class ClipEditor:
         tk.Label(top, text=f"{self.track['name']} clip", bg=BG, fg=ACCENT, font=("Segoe UI", 16, "bold")).pack(side="left", padx=(0, 10))
         tk.Label(top, text="Bars", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))
         tk.OptionMenu(top, self.bar_var, "1", "2", "4", command=lambda value: self.daw.resize_clip(self.track, self.clip, value)).pack(side="left")
+        if self.track["id"] == "voice1":
+            tk.Label(top, text="Voice 1 x", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))
+            tk.OptionMenu(top, self.dna_factor_var, "1", "0.5", "0.25", command=self.set_dna_factor).pack(side="left")
         self.daw.button(top, "Delete", RED, self.delete, width=7).pack(side="right", padx=3)
         self.body = tk.Frame(self.window, bg=BG)
         self.body.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -747,6 +770,9 @@ class ClipEditor:
             self.build_dna()
         else:
             self.build_grid()
+
+    def set_dna_factor(self, value):
+        self.clip["dna_factor"] = value
 
     def build_grid(self):
         steps = self.clip["bars"] * STEPS_PER_BAR

@@ -61,6 +61,15 @@ TRACKS = [
     {"id": "voice2", "name": "Voice 2", "kind": "DNA", "channel": 1, "velocity": 75, "gate": 80},
 ]
 
+INSTRUMENTS = {
+    "Bass": {"kind": "Bass", "channel": 2, "velocity": 88, "gate": 55},
+    "Pad": {"kind": "Pad", "channel": 3, "velocity": 48, "gate": 92},
+    "Arp": {"kind": "Arp", "channel": 4, "velocity": 36, "gate": 35},
+    "Drums": {"kind": "Drums", "channel": 10, "velocity": 96, "gate": 30},
+    "FX": {"kind": "FX", "channel": 5, "velocity": 64, "gate": 75},
+    "Voice": {"kind": "DNA", "channel": 1, "velocity": 75, "gate": 80},
+}
+
 PALETTES = {
     "Pad": ["", "Am9", "Fmaj7", "Cmaj7", "G6", "Em9", "Dm9", "Bbmaj7"],
     "Arp": ["", "Am9", "Fmaj7", "Cmaj7", "G6", "Em9", "Dm9", "Bbmaj7"],
@@ -142,6 +151,7 @@ class ArrangerDaw:
         self.app.title("Synthwave Arranger MIDI DAW")
         self.app.geometry("1320x720")
         self.bpm_var = tk.IntVar(value=128)
+        self.start_bar_var = tk.IntVar(value=1)
         self.clip_bars_var = tk.StringVar(value="1")
         self.tracks = []
         self.port_choices = []
@@ -168,6 +178,7 @@ class ArrangerDaw:
         tk.Spinbox(top, from_=40, to=220, textvariable=self.bpm_var, width=5, bg=FIELD, fg=TEXT, buttonbackground=LINE, relief="flat").pack(side="left")
         tk.Label(top, text="Clip", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))
         tk.OptionMenu(top, self.clip_bars_var, "1", "2", "4").pack(side="left")
+        self.button(top, "Add Instrument", "#1f2b3f", self.open_add_instrument, width=13).pack(side="left", padx=(10, 3))
         self.button(top, "Save", ACCENT, self.save, fg="#111827", width=5).pack(side="left", padx=(10, 3))
         self.button(top, "Load", "#1f2b3f", self.load).pack(side="left", padx=4)
         self.button(top, "Ports", "#1f2b3f", self.refresh_ports, width=6).pack(side="left", padx=3)
@@ -251,6 +262,43 @@ class ArrangerDaw:
             track["clips"] = []
             self.tracks.append(track)
 
+    def new_track(self, instrument):
+        spec = dict(INSTRUMENTS[instrument])
+        base = "Voice" if spec["kind"] == "DNA" else instrument
+        number = sum(1 for track in self.tracks if track["kind"] == spec["kind"] and track["name"].startswith(base)) + 1
+        track_id = f"{base.lower()}{number}"
+        used_ids = {track["id"] for track in self.tracks}
+        while track_id in used_ids:
+            number += 1
+            track_id = f"{base.lower()}{number}"
+        spec.update({"id": track_id, "name": f"{base} {number}", "clips": []})
+        return spec
+
+    def open_add_instrument(self):
+        window = tk.Toplevel(self.app)
+        window.configure(bg=BG)
+        window.title("Add instrument")
+        window.geometry("260x110")
+        instrument_var = tk.StringVar(value="Bass")
+        tk.Label(window, text="Instrument", bg=BG, fg=MUTED).pack(anchor="w", padx=10, pady=(10, 3))
+        tk.OptionMenu(window, instrument_var, *INSTRUMENTS.keys()).pack(fill="x", padx=10)
+        self.button(window, "Add", ACCENT, lambda: self.add_instrument(window, instrument_var.get()), fg="#111827", width=8).pack(anchor="e", padx=10, pady=10)
+
+    def add_instrument(self, window, instrument):
+        self.sync_track_controls()
+        self.tracks.append(self.new_track(instrument))
+        self.build_arranger()
+        window.destroy()
+        self.status(f"added {instrument}")
+
+    def sync_track_controls(self):
+        for track in self.tracks:
+            if "velocity_var" in track:
+                track["velocity"] = track["velocity_var"].get()
+                track["mute"] = track["mute_var"].get()
+                track["solo"] = track["solo_var"].get()
+                track["saved_port"] = self.selected_port(track)
+
     def build_arranger(self):
         for widget in self.inner.winfo_children():
             widget.destroy()
@@ -261,7 +309,8 @@ class ArrangerDaw:
         self.header_cells = []
         for bar in range(SONG_BARS):
             header.grid_columnconfigure(bar, minsize=BAR_WIDTH)
-            label = tk.Label(header, text=str(bar + 1), width=1, bg="#101827" if bar % 4 == 0 else FIELD, fg=MUTED, font=("Segoe UI", 8))
+            label = tk.Label(header, text=str(bar + 1), width=1, bg="#101827" if bar % 4 == 0 else FIELD, fg=MUTED, font=("Segoe UI", 8), cursor="hand2")
+            label.bind("<Button-1>", lambda _event, b=bar: self.play_from_bar(b + 1))
             label.grid(row=0, column=bar, padx=(1, 0), sticky="ew")
             self.header_cells.append(label)
         for row, track in enumerate(self.tracks, start=1):
@@ -278,6 +327,11 @@ class ArrangerDaw:
         port_menu.configure(bg=FIELD, fg=TEXT, activebackground=LINE, activeforeground=TEXT, highlightthickness=0, width=15)
         port_menu["menu"].configure(bg=FIELD, fg=TEXT)
         port_menu.grid(row=0, column=1, sticky="ew", padx=3, pady=3)
+        if track.get("saved_port") is not None:
+            for choice in self.port_choices:
+                if choice.startswith(f"{track['saved_port']}:"):
+                    port_var.set(choice)
+                    break
         velocity_var = tk.IntVar(value=track.get("velocity", 75))
         tk.Label(left, text="V", bg=PANEL, fg=MUTED).grid(row=0, column=2, sticky="e", padx=(4, 1), pady=3)
         tk.Spinbox(left, from_=1, to=127, textvariable=velocity_var, width=4, bg=FIELD, fg=TEXT, buttonbackground=LINE, relief="flat").grid(row=0, column=3, sticky="w", padx=2, pady=3)
@@ -615,17 +669,24 @@ class ArrangerDaw:
             self.stop()
             self.open_outputs()
             self.playing = True
-            self.play_step_index = -1
+            start_bar = clamp(self.start_bar_var.get(), 1, SONG_BARS)
+            self.play_step_index = (start_bar - 1) * STEPS_PER_BAR - 1
             for track in self.tracks:
                 for clip in track["clips"]:
                     clip["dna_step"] = 0
                     clip["dna_wait"] = 0
                     clip["active_codon"] = None
             self.play_step()
-            self.status("playing arranger")
+            self.status(f"playing from bar {start_bar}")
         except Exception:
             self.stop()
             self.report_exception("play failed")
+
+    def play_from_bar(self, bar):
+        self.start_bar_var.set(clamp(int(bar), 1, SONG_BARS))
+        if self.playing:
+            self.stop()
+        self.play()
 
     def stop(self):
         self.playing = False
@@ -688,7 +749,7 @@ class ArrangerDaw:
             item["solo"] = track["solo_var"].get() if "solo_var" in track else 0
             item["clips"] = track["clips"]
             tracks.append(item)
-        return {"bpm": self.bpm_var.get(), "tracks": tracks}
+        return {"bpm": self.bpm_var.get(), "start_bar": clamp(self.start_bar_var.get(), 1, SONG_BARS), "tracks": tracks}
 
     def apply_track_data(self, track, data):
         track["clips"] = data.get("clips", [])
@@ -710,10 +771,19 @@ class ArrangerDaw:
         if PROJECT_FILE.exists():
             data = json.loads(PROJECT_FILE.read_text(encoding="utf-8"))
             self.bpm_var.set(data.get("bpm", 128))
+            self.start_bar_var.set(clamp(int(data.get("start_bar", 1)), 1, SONG_BARS))
             by_id = {track["id"]: track for track in data.get("tracks", [])}
             for track in self.tracks:
                 if track["id"] in by_id:
                     self.apply_track_data(track, by_id[track["id"]])
+            default_ids = {track["id"] for track in self.tracks}
+            for saved_track in data.get("tracks", []):
+                if saved_track.get("id") in default_ids:
+                    continue
+                track = {key: saved_track[key] for key in ("id", "name", "kind", "channel", "gate") if key in saved_track}
+                track["clips"] = []
+                self.apply_track_data(track, saved_track)
+                self.tracks.append(track)
         self.build_arranger()
         for track in self.tracks:
             if "saved_port" in track and track["saved_port"] is not None:
@@ -756,7 +826,7 @@ class ClipEditor:
         tk.OptionMenu(top, self.bar_var, "1", "2", "4", command=lambda value: self.daw.resize_clip(self.track, self.clip, value)).pack(side="left")
         if self.track["id"] == "voice1":
             tk.Label(top, text="Voice 1 x", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))
-            tk.OptionMenu(top, self.dna_factor_var, "1", "0.5", "0.25", command=self.set_dna_factor).pack(side="left")
+            tk.OptionMenu(top, self.dna_factor_var, "1", "0.5", "0.25", "0.125", command=self.set_dna_factor).pack(side="left")
         self.daw.button(top, "Delete", RED, self.delete, width=7).pack(side="right", padx=3)
         self.body = tk.Frame(self.window, bg=BG)
         self.body.pack(fill="both", expand=True, padx=10, pady=(0, 10))

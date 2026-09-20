@@ -23,7 +23,7 @@ RED = "#70333d"
 LOOP = "#0e7490"
 
 PROJECT_FILE = Path(__file__).with_name("arranger_daw.json")
-SONG_BARS = 64
+SONG_BARS = 96
 STEPS_PER_BAR = 16
 CODONS_PER_BAR = 16
 CODONS_PER_BEAT = 4

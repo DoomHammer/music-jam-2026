@@ -567,7 +567,7 @@ class ArrangerDaw:
         elif kind == "Arp":
             chord, offset = self.active_chord(clip, local_step)
             if chord:
-                notes = chord_notes(chord, 4)
+                notes = chord_notes(chord, 4)[:clamp(int(clip.get("arp_notes", 4)), 3, 5)]
                 self.send_notes(track, [notes[offset % len(notes)]])
         elif kind == "Drums" and value:
             notes = [DRUM_NOTES[token] for token in value.split("+") if token in DRUM_NOTES]
@@ -814,6 +814,7 @@ class ClipEditor:
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.bar_var = tk.StringVar(value=str(clip["bars"]))
         self.dna_factor_var = tk.StringVar(value=str(clip.get("dna_factor", "1")))
+        self.arp_notes_var = tk.StringVar(value=str(clip.get("arp_notes", 4)))
         self.buttons = []
         self.text = None
         self.build()
@@ -827,6 +828,9 @@ class ClipEditor:
         if self.track["id"] == "voice1":
             tk.Label(top, text="Voice 1 x", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))
             tk.OptionMenu(top, self.dna_factor_var, "1", "0.5", "0.25", "0.125", command=self.set_dna_factor).pack(side="left")
+        if self.kind == "Arp":
+            tk.Label(top, text="Arp notes", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))
+            tk.OptionMenu(top, self.arp_notes_var, "3", "4", "5", command=self.set_arp_notes).pack(side="left")
         self.daw.button(top, "Delete", RED, self.delete, width=7).pack(side="right", padx=3)
         self.body = tk.Frame(self.window, bg=BG)
         self.body.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -843,6 +847,9 @@ class ClipEditor:
 
     def set_dna_factor(self, value):
         self.clip["dna_factor"] = value
+
+    def set_arp_notes(self, value):
+        self.clip["arp_notes"] = int(value)
 
     def build_grid(self):
         steps = self.clip["bars"] * STEPS_PER_BAR

@@ -30,6 +30,7 @@ CODONS_PER_BEAT = 4
 DNA_GATE = 0.8
 DNA_DELAY_MS = 5
 BAR_WIDTH = 48
+SONG_TITLE_DEFAULT = "Hippocampus.fasta Hippocampus FASTA!, Hippocampus.fasta Hippocampus FASTA!, Hippocampus.fasta Hippocampus FASTA!,"
 
 NOTE_BASE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 CHORDS = {
@@ -57,8 +58,8 @@ TRACKS = [
     {"id": "arp", "name": "Arp", "kind": "Arp", "channel": 4, "velocity": 36, "gate": 35},
     {"id": "drums", "name": "Drums", "kind": "Drums", "channel": 10, "velocity": 96, "gate": 30},
     {"id": "fx", "name": "FX", "kind": "FX", "channel": 5, "velocity": 64, "gate": 75},
-    {"id": "voice1", "name": "Voice 1", "kind": "DNA", "channel": 1, "velocity": 75, "gate": 80},
-    {"id": "voice2", "name": "Voice 2", "kind": "DNA", "channel": 1, "velocity": 75, "gate": 80},
+    {"id": "voice1", "name": "DNA 1", "kind": "DNA", "channel": 1, "velocity": 75, "gate": 80},
+    {"id": "voice2", "name": "DNA 2", "kind": "DNA", "channel": 1, "velocity": 75, "gate": 80},
 ]
 
 INSTRUMENTS = {
@@ -67,7 +68,7 @@ INSTRUMENTS = {
     "Arp": {"kind": "Arp", "channel": 4, "velocity": 36, "gate": 35},
     "Drums": {"kind": "Drums", "channel": 10, "velocity": 96, "gate": 30},
     "FX": {"kind": "FX", "channel": 5, "velocity": 64, "gate": 75},
-    "Voice": {"kind": "DNA", "channel": 1, "velocity": 75, "gate": 80},
+    "DNA": {"kind": "DNA", "channel": 1, "velocity": 75, "gate": 80},
 }
 
 PALETTES = {
@@ -199,6 +200,9 @@ class ArrangerDaw:
         self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
         self.inner.bind("<Configure>", lambda _event: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
 
+        self.song_title = tk.Text(self.app, height=2, bg=BG, fg=ACCENT, insertbackground=ACCENT, selectbackground="#273956", relief="flat", font=("Segoe UI", 30, "bold"), wrap="word")
+        self.song_title.pack(fill="x", padx=12, pady=(0, 4))
+        self.song_title.insert("1.0", SONG_TITLE_DEFAULT)
         self.status_box = tk.Text(self.app, height=4, bg=FIELD, fg=MUTED, insertbackground=ACCENT, selectbackground="#273956", relief="flat", font=("Consolas", 9), wrap="word")
         self.status_box.pack(fill="x", padx=12, pady=(0, 6))
         self.status_box.bind("<Control-c>", self.copy_status)
@@ -264,7 +268,7 @@ class ArrangerDaw:
 
     def new_track(self, instrument):
         spec = dict(INSTRUMENTS[instrument])
-        base = "Voice" if spec["kind"] == "DNA" else instrument
+        base = "DNA" if spec["kind"] == "DNA" else instrument
         number = sum(1 for track in self.tracks if track["kind"] == spec["kind"] and track["name"].startswith(base)) + 1
         track_id = f"{base.lower()}{number}"
         used_ids = {track["id"] for track in self.tracks}
@@ -407,8 +411,35 @@ class ArrangerDaw:
     def show_clip_menu(self, event, track, clip):
         menu = tk.Menu(self.app, tearoff=0, bg=FIELD, fg=TEXT, activebackground=LINE, activeforeground=TEXT)
         menu.add_command(label="Copy beside", command=lambda: self.copy_clip_beside(track, clip))
+        menu.add_command(label="Rename", command=lambda: self.rename_clip_dialog(track, clip))
         menu.tk_popup(event.x_root, event.y_root)
         return "break"
+
+    def rename_clip_dialog(self, track, clip):
+        window = tk.Toplevel(self.app)
+        window.configure(bg=BG)
+        window.title("Rename clip")
+        window.geometry("280x110")
+        name_var = tk.StringVar(value=clip.get("name", track["name"]))
+        tk.Label(window, text="Clip name", bg=BG, fg=MUTED).pack(anchor="w", padx=10, pady=(10, 3))
+        entry = tk.Entry(window, textvariable=name_var, bg=FIELD, fg=TEXT, insertbackground=ACCENT, relief="flat")
+        entry.pack(fill="x", padx=10)
+        entry.focus_set()
+        entry.select_range(0, "end")
+
+        def save_name():
+            name = name_var.get().strip()
+            if name:
+                clip["name"] = name
+                self.render_track_timeline(track)
+                if self.editor and self.editor.clip is clip:
+                    self.editor.window.title(f"{track['name']} clip @ bar {clip['start'] + 1}")
+                self.status("clip renamed")
+            window.destroy()
+
+        self.button(window, "Rename", ACCENT, save_name, fg="#111827", width=8).pack(anchor="e", padx=10, pady=10)
+        entry.bind("<Return>", lambda _event: (save_name(), "break")[1])
+        entry.bind("<Escape>", lambda _event: (window.destroy(), "break")[1])
 
     def copy_clip_beside(self, track, clip):
         bars = clamp(int(clip.get("bars", 1)), 1, 4)
@@ -758,7 +789,7 @@ class ArrangerDaw:
             item["solo"] = track["solo_var"].get() if "solo_var" in track else 0
             item["clips"] = track["clips"]
             tracks.append(item)
-        return {"bpm": self.bpm_var.get(), "start_bar": clamp(self.start_bar_var.get(), 1, SONG_BARS), "tracks": tracks}
+        return {"bpm": self.bpm_var.get(), "start_bar": clamp(self.start_bar_var.get(), 1, SONG_BARS), "song_title": self.song_title.get("1.0", "end").strip(), "tracks": tracks}
 
     def apply_track_data(self, track, data):
         track["clips"] = data.get("clips", [])
@@ -781,11 +812,15 @@ class ArrangerDaw:
             data = json.loads(PROJECT_FILE.read_text(encoding="utf-8"))
             self.bpm_var.set(data.get("bpm", 128))
             self.start_bar_var.set(clamp(int(data.get("start_bar", 1)), 1, SONG_BARS))
+            self.song_title.delete("1.0", "end")
+            self.song_title.insert("1.0", data.get("song_title", SONG_TITLE_DEFAULT))
             default_tracks = {track["id"]: track for track in self.tracks}
             self.tracks = []
             for saved_track in data.get("tracks", []):
                 track = dict(default_tracks.get(saved_track.get("id"), {}))
                 track.update({key: saved_track[key] for key in ("id", "name", "kind", "channel", "gate") if key in saved_track})
+                if track.get("id") in ("voice1", "voice2"):
+                    track["name"] = default_tracks[track["id"]]["name"]
                 track["clips"] = []
                 self.apply_track_data(track, saved_track)
                 self.tracks.append(track)
@@ -831,7 +866,7 @@ class ClipEditor:
         tk.Label(top, text="Bars", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))
         tk.OptionMenu(top, self.bar_var, "1", "2", "4", command=lambda value: self.daw.resize_clip(self.track, self.clip, value)).pack(side="left")
         if self.track["id"] == "voice1":
-            tk.Label(top, text="Voice 1 x", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))
+            tk.Label(top, text="DNA 1 x", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))
             tk.OptionMenu(top, self.dna_factor_var, "1", "0.5", "0.25", "0.125", command=self.set_dna_factor).pack(side="left")
         if self.kind == "Arp":
             tk.Label(top, text="Arp notes", bg=BG, fg=MUTED).pack(side="left", padx=(8, 3))
